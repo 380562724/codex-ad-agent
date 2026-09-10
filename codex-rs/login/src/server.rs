@@ -30,7 +30,6 @@ use crate::auth::save_auth;
 use crate::callback_params::LoginCallbackResult;
 use crate::callback_params::login_callback_result_from_state;
 use crate::default_client::create_raw_auth_client;
-use crate::default_client::originator;
 use crate::outbound_proxy::AuthRouteConfig;
 use crate::pkce::PkceCodes;
 use crate::pkce::generate_pkce;
@@ -56,7 +55,9 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
-pub(super) const DEFAULT_ISSUER: &str = "https://auth.openai.com";
+// [ad-agent] 授权服务器换成我们自己的。注意：改这里还不够，刷新/吊销端点在
+// auth/manager.rs 里是独立常量，只改这一处会变成"登录成功、刷新时打到上游"的延迟故障。
+pub(super) const DEFAULT_ISSUER: &str = "https://quchenyang.com";
 const DEFAULT_PORT: u16 = 1455;
 // Keep in sync with the Codex CLI Hydra redirect URI allow-list.
 const FALLBACK_PORT: u16 = 1457;
@@ -425,15 +426,10 @@ async fn process_request(
                             /*error_description*/ None,
                         );
                     }
-                    // Obtain API key via token-exchange and persist
-                    let api_key = obtain_api_key(
-                        &opts.issuer,
-                        &opts.client_id,
-                        &tokens.id_token,
-                        &opts.auth_route_config,
-                    )
-                    .await
-                    .ok();
+                    // [ad-agent] 上游在这里用 RFC 8693 token-exchange 再换一把 OpenAI API key。
+                    // 我们的服务端不提供这种 grant，请求必然 400（结果本来也只是 .ok() 丢掉），
+                    // 所以整个去掉，省一次注定失败的往返。obtain_api_key 函数已一并删除。
+                    let api_key: Option<String> = None;
                     if let Err(err) = persist_tokens_async(
                         &opts.codex_home,
                         api_key.clone(),
@@ -585,20 +581,20 @@ fn build_authorize_url(
         ("response_type".to_string(), "code".to_string()),
         ("client_id".to_string(), client_id.to_string()),
         ("redirect_uri".to_string(), redirect_uri.to_string()),
+        // [ad-agent] 只保留 RFC 6749 的标准参数。上游那几个私有参数
+        // （id_token_add_organizations / codex_cli_simplified_flow / originator，
+        // 以及 api.connectors.* scope）我们的服务端不认，而且会出现在用户看得见的
+        // 授权链接里，露出上游品牌。
         (
             "scope".to_string(),
-            "openid profile email offline_access api.connectors.read api.connectors.invoke"
-                .to_string(),
+            "openid profile email offline_access".to_string(),
         ),
         (
             "code_challenge".to_string(),
             pkce.code_challenge.to_string(),
         ),
         ("code_challenge_method".to_string(), "S256".to_string()),
-        ("id_token_add_organizations".to_string(), "true".to_string()),
-        ("codex_cli_simplified_flow".to_string(), "true".to_string()),
         ("state".to_string(), state.to_string()),
-        ("originator".to_string(), originator().value),
     ];
     if let Some(workspace_ids) = forced_chatgpt_workspace_ids {
         query.push(("allowed_workspace_id".to_string(), workspace_ids.join(",")));
@@ -1133,43 +1129,6 @@ fn html_escape(input: &str) -> String {
     escaped
 }
 
-/// Exchanges an authenticated ID token for an API-key style access token.
-pub(crate) async fn obtain_api_key(
-    issuer: &str,
-    client_id: &str,
-    id_token: &str,
-    auth_route_config: &AuthRouteConfig,
-) -> io::Result<String> {
-    // Token exchange for an API key access token
-    #[derive(serde::Deserialize)]
-    struct ExchangeResp {
-        access_token: String,
-    }
-    let token_endpoint = format!("{}/oauth/token", issuer.trim_end_matches('/'));
-    let client = create_raw_auth_client(&token_endpoint, auth_route_config)?;
-    let resp = client
-        .post(token_endpoint)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(format!(
-            "grant_type={}&client_id={}&requested_token={}&subject_token={}&subject_token_type={}",
-            urlencoding::encode("urn:ietf:params:oauth:grant-type:token-exchange"),
-            urlencoding::encode(client_id),
-            urlencoding::encode("openai-api-key"),
-            urlencoding::encode(id_token),
-            urlencoding::encode("urn:ietf:params:oauth:token-type:id_token")
-        ))
-        .send()
-        .await
-        .map_err(io::Error::other)?;
-    if !resp.status().is_success() {
-        return Err(io::Error::other(format!(
-            "api key exchange failed with status {}",
-            resp.status()
-        )));
-    }
-    let body: ExchangeResp = resp.json().await.map_err(io::Error::other)?;
-    Ok(body.access_token)
-}
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;

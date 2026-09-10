@@ -158,7 +158,7 @@
     </style>
   </head>
   <body>
-    <div class="wordmark" aria-label="ChatGPT">ChatGPT</div>
+    <div class="wordmark" aria-label="ad-agent">ad-agent</div>
     <main>
       <div class="content">
         <p class="message" id="status-message">You&rsquo;re signed in and may close this tab</p>
@@ -179,10 +179,6 @@
           </svg>
           <span>Open Codex</span>
         </button>
-        <div class="setup-box" id="setup-box">
-          <p class="setup-title">Finish setting up your API organization</p>
-          <p class="setup-description">Add a payment method to use your organization. Redirecting in <span id="countdown">3</span>s...</p>
-        </div>
       </div>
     </main>
     <script>
@@ -190,13 +186,6 @@
         const CODEX_URL = "codex://threads/new";
         const params = new URLSearchParams(window.location.search);
         const preview = params.get("preview") === "true";
-        const needsSetup = params.get("needs_setup") === "true";
-        const platformUrl = params.get("platform_url") || "https://platform.openai.com";
-        const orgId = params.get("org_id");
-        const projectId = params.get("project_id");
-        const planType = params.get("plan_type");
-        const idToken = params.get("id_token");
-
         window.history.replaceState(null, "", window.location.pathname);
 
         function openCodex() {
@@ -208,29 +197,8 @@
           setTimeout(openCodex, 250);
         }
 
-        if (needsSetup) {
-          const setupBox = document.getElementById("setup-box");
-          const countdownNode = document.getElementById("countdown");
-          setupBox.style.display = "block";
-          const redirectUrlObj = new URL("/org-setup", platformUrl);
-          redirectUrlObj.search = new URLSearchParams({
-            p: planType,
-            t: idToken,
-            with_org: orgId,
-            project_id: projectId,
-          }).toString();
-          let countdown = 3;
-          function tick() {
-            countdownNode.textContent = String(countdown);
-            if (countdown === 0) {
-              window.location.replace(redirectUrlObj.toString());
-              return;
-            }
-            countdown -= 1;
-            setTimeout(tick, 1000);
-          }
-          tick();
-        }
+        // [ad-agent] 上游这里会在 needs_setup 时倒计时跳到 platform.openai.com
+        // 的 /org-setup 补付款方式。那是上游的计费流程，本产品不需要，整段删除。
       })();
     </script>
   </body>
