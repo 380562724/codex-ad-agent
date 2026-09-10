@@ -78,11 +78,9 @@ struct IdClaims {
     auth: Option<AuthClaims>,
     // [ad-agent] 我们的服务端签发扁平 claim，没有上游那层命名空间对象。
     // account_id 一旦为空，reload_if_account_id_matches 会直接 Skipped，
-    // 刷新链路会判定为永久失败（manager.rs:2462），所以这两个字段是必需的。
+    // 刷新链路会判定为永久失败（manager.rs:2462），所以这个字段是必需的。
     #[serde(default)]
     account_id: Option<String>,
-    #[serde(default)]
-    sub: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -184,7 +182,6 @@ pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoErr
         profile,
         auth,
         account_id,
-        sub,
     } = decode_jwt_payload(jwt)?;
     let email = email.or_else(|| profile.and_then(|profile| profile.email));
 
@@ -194,7 +191,7 @@ pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoErr
             email,
             raw_jwt: jwt.to_string(),
             chatgpt_plan_type: auth.chatgpt_plan_type,
-            chatgpt_user_id: auth.chatgpt_user_id.or(auth.user_id).or(sub),
+            chatgpt_user_id: auth.chatgpt_user_id.or(auth.user_id),
             chatgpt_account_id: auth.chatgpt_account_id.or(account_id),
             chatgpt_account_is_fedramp: auth.chatgpt_account_is_fedramp,
         }),
@@ -202,7 +199,7 @@ pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoErr
             email,
             raw_jwt: jwt.to_string(),
             chatgpt_plan_type: None,
-            chatgpt_user_id: sub,
+            chatgpt_user_id: None,
             chatgpt_account_id: account_id,
             chatgpt_account_is_fedramp: false,
         }),

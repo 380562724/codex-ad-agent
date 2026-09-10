@@ -32,8 +32,10 @@
 上游的 id_token 把信息塞在 `https://api.openai.com/auth` 这个命名空间对象里，
 我们的服务端签发扁平 claim（`account_id`、`sub`）。
 
-- `login/src/token_data.rs`：`IdClaims` 增加 `account_id` / `sub`，解析时命名空间优先、
-  缺失时回落到扁平字段。
+- `login/src/token_data.rs`：`IdClaims` 增加 `account_id`，解析时命名空间优先、
+  缺失时回落到扁平字段。（注意：只兜底 `account_id`。曾经顺手用 `sub` 兜底
+  `chatgpt_user_id`，会让上游 20 个 auth_refresh 用例的期望值变化，而这个字段
+  在登录链路里没有消费方，已去掉。）
 - `login/src/success_page.rs` `jwt_auth_claims()`：命名空间对象不存在时退回整个 payload，
   并把 `account_id` 映射成下游取用的 `chatgpt_account_id`。
 
