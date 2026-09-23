@@ -1059,6 +1059,7 @@ env_http_headers = { "x-openai-internal-codex-residency" = "CODEX_TEST_UNSET_RES
             ConfigOverrides::default(),
             tempdir()?.abs(),
             config_layer_stack,
+            Ok(()),
         )
         .await?;
 
@@ -5535,6 +5536,7 @@ async fn rebuild_with_session_layers_refreshes_requirements() -> std::io::Result
         },
         codex_home.abs(),
         refreshed_layer_stack,
+        Ok(()),
     )
     .await?;
     let thread_layer_stack = ConfigLayerStack::new(
@@ -5602,6 +5604,7 @@ async fn rebuild_with_session_layers_refreshes_requirements() -> std::io::Result
         },
         codex_home.abs(),
         thread_layer_stack,
+        Ok(()),
     )
     .await?;
     let zsh_path = refreshed_config.zsh_path.clone();
@@ -5611,6 +5614,7 @@ async fn rebuild_with_session_layers_refreshes_requirements() -> std::io::Result
         &refreshed_config.config_layer_stack,
         refreshed_config.codex_home.clone(),
         zsh_path.map(AbsolutePathBuf::try_from).transpose()?,
+        refreshed_config.ad_agent_config_status.clone(),
     )
     .await?;
 
@@ -5701,6 +5705,7 @@ async fn rebuild_with_session_layers_refreshes_plugin_derived_mcp_config() -> an
         },
         codex_home.abs(),
         refreshed_layer_stack,
+        Ok(()),
     )
     .await?;
     let thread_layer_stack = ConfigLayerStack::new(
@@ -5730,6 +5735,7 @@ async fn rebuild_with_session_layers_refreshes_plugin_derived_mcp_config() -> an
         },
         codex_home.abs(),
         thread_layer_stack,
+        Ok(()),
     )
     .await?;
     let zsh_path = refreshed_config.zsh_path.clone();
@@ -5739,6 +5745,7 @@ async fn rebuild_with_session_layers_refreshes_plugin_derived_mcp_config() -> an
         &refreshed_config.config_layer_stack,
         refreshed_config.codex_home.clone(),
         zsh_path.map(AbsolutePathBuf::try_from).transpose()?,
+        refreshed_config.ad_agent_config_status.clone(),
     )
     .await?;
     let plugins_manager =
@@ -6276,6 +6283,7 @@ async fn config_applies_managed_auth_store_and_chatgpt_base_url() -> std::io::Re
         },
         codex_home.abs(),
         config_layer_stack,
+        Ok(()),
     )
     .await?;
 
@@ -6322,6 +6330,7 @@ async fn project_cannot_be_the_only_xaa_opt_in_source() -> std::io::Result<()> {
         },
         codex_home.abs(),
         config_layer_stack,
+        Ok(()),
     )
     .await
     .expect_err("project-only XAA opt-in must fail");
@@ -8359,6 +8368,7 @@ async fn load_config_uses_requirements_guardian_policy_config() -> std::io::Resu
         },
         codex_home.abs(),
         config_layer_stack,
+        Ok(()),
     )
     .await?;
 
@@ -8476,6 +8486,7 @@ async fn requirements_guardian_policy_beats_auto_review() -> std::io::Result<()>
             },
             codex_home.abs(),
             config_layer_stack,
+            Ok(()),
         )
         .await?;
 
@@ -8546,6 +8557,7 @@ async fn load_config_ignores_empty_requirements_guardian_policy_config() -> std:
         },
         codex_home.abs(),
         config_layer_stack,
+        Ok(()),
     )
     .await?;
 
@@ -8690,6 +8702,7 @@ config_file = "./agents/researcher.toml"
         },
         codex_home.abs(),
         config_layer_stack,
+        Ok(()),
     )
     .await?;
 
@@ -10297,6 +10310,7 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         },
         fixture.codex_home(),
         config_layer_stack,
+        Ok(()),
     )
     .await?;
 
@@ -13373,6 +13387,20 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
         &mut warnings,
     );
     assert!(warnings.is_empty());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn build_succeeds_without_auth_but_records_ad_agent_config_status() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .build()
+        .await?;
+
+    assert!(config.ad_agent_config_status.is_err());
 
     Ok(())
 }

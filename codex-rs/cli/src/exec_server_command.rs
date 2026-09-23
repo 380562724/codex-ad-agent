@@ -447,7 +447,13 @@ async fn load_exec_server_config(
         .await?;
         builder = builder.cloud_config_bundle(cloud_config_bundle);
     }
-    Ok(builder.build().await?)
+    let config = builder.build().await?;
+    // [ad-agent] Model config must come from the server; refuse to start a session if the
+    // fetch failed (see `Config::ad_agent_config_status` doc comment).
+    if let Err(err) = &config.ad_agent_config_status {
+        anyhow::bail!("{err}");
+    }
+    Ok(config)
 }
 
 async fn load_exec_server_remote_auth(

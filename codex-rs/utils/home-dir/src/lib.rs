@@ -2,9 +2,15 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use dirs::home_dir;
 use std::path::PathBuf;
 
+/// [ad-agent] Name of the default config directory under the user's home. Deliberately not
+/// `.codex`: the official Codex app/CLI own `~/.codex`, and sharing it would make ad-agent read
+/// their `config.toml` (local model/provider settings that server-driven config then only
+/// partially overrides) and their credentials.
+pub const DEFAULT_CODEX_HOME_DIR_NAME: &str = ".ad-agent";
+
 /// Returns the path to the Codex configuration directory, which can be
 /// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.codex`.
+/// `~/.ad-agent` (see [`DEFAULT_CODEX_HOME_DIR_NAME`]).
 ///
 /// - If `CODEX_HOME` is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.
@@ -56,7 +62,7 @@ fn find_codex_home_from_env(codex_home_env: Option<&str>) -> std::io::Result<Abs
                     "Could not find home directory",
                 )
             })?;
-            p.push(".codex");
+            p.push(DEFAULT_CODEX_HOME_DIR_NAME);
             AbsolutePathBuf::from_absolute_path(p)
         }
     }
@@ -64,6 +70,7 @@ fn find_codex_home_from_env(codex_home_env: Option<&str>) -> std::io::Result<Abs
 
 #[cfg(test)]
 mod tests {
+    use super::DEFAULT_CODEX_HOME_DIR_NAME;
     use super::find_codex_home_from_env;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use dirs::home_dir;
@@ -127,7 +134,7 @@ mod tests {
         let resolved =
             find_codex_home_from_env(/*codex_home_env*/ None).expect("default CODEX_HOME");
         let mut expected = home_dir().expect("home dir");
-        expected.push(".codex");
+        expected.push(DEFAULT_CODEX_HOME_DIR_NAME);
         let expected = AbsolutePathBuf::from_absolute_path(expected).expect("absolute home");
         assert_eq!(resolved, expected);
     }

@@ -396,3 +396,67 @@ fn with_user_config_updates_matching_user_layer_without_replacing_active_profile
         Some("on-request")
     );
 }
+
+/// `ServerConfig` must outrank `SessionFlags`, since a thread's persisted
+/// model selection is also carried as a `SessionFlags` layer: if the two
+/// shared precedence, whichever layer the loader happened to insert last
+/// would win, regardless of which one is actually supposed to be
+/// authoritative.
+#[test]
+fn server_config_outranks_session_flags() {
+    let session_flags_layer = ConfigLayerEntry::new(
+        ConfigLayerSource::SessionFlags,
+        toml::from_str(r#"model_provider = "minimax""#).expect("session config"),
+    );
+    let server_config_layer = ConfigLayerEntry::new(
+        ConfigLayerSource::ServerConfig,
+        toml::from_str(r#"model_provider = "cowork""#).expect("server config"),
+    );
+
+    let stack = ConfigLayerStack::new(
+        vec![session_flags_layer, server_config_layer],
+        ConfigRequirements::default(),
+        ConfigRequirementsToml::default(),
+    )
+    .expect("layer stack should be valid: ServerConfig must sort after SessionFlags");
+
+    let effective = stack.effective_config();
+
+    assert_eq!(
+        effective.get("model_provider").and_then(toml::Value::as_str),
+        Some("cowork"),
+        "server-driven config must not be overridable by a same-precedence session flags layer"
+    );
+}
+
+/// Callers that assemble a `ConfigLayerStack` incrementally (e.g. the
+/// ad-agent server-config fetch, which runs before the thread config loader
+/// contributes its own `SessionFlags` layer) need a way to insert a layer at
+/// its correct sorted position rather than only appending at construction time.
+#[test]
+fn with_layer_inserted_by_precedence_keeps_layers_sorted() {
+    let session_flags_layer = ConfigLayerEntry::new(
+        ConfigLayerSource::SessionFlags,
+        toml::from_str(r#"model_provider = "minimax""#).expect("session config"),
+    );
+    let stack = ConfigLayerStack::new(
+        vec![session_flags_layer],
+        ConfigRequirements::default(),
+        ConfigRequirementsToml::default(),
+    )
+    .expect("initial layer stack should be valid");
+
+    let server_config_layer = ConfigLayerEntry::new(
+        ConfigLayerSource::ServerConfig,
+        toml::from_str(r#"model_provider = "cowork""#).expect("server config"),
+    );
+    let stack = stack.with_layer_inserted_by_precedence(server_config_layer);
+
+    let effective = stack.effective_config();
+
+    assert_eq!(
+        effective.get("model_provider").and_then(toml::Value::as_str),
+        Some("cowork"),
+        "layer inserted after the fact must still be sorted ahead of a lower-precedence layer"
+    );
+}

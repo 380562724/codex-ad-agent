@@ -225,6 +225,7 @@ impl ConfigLayerEntry {
             ConfigLayerSource::User { file, .. } => file.parent(),
             ConfigLayerSource::Project { dot_codex_folder } => Some(dot_codex_folder.clone()),
             ConfigLayerSource::SessionFlags => None,
+            ConfigLayerSource::ServerConfig => None,
             ConfigLayerSource::LegacyManagedConfigTomlFromFile { .. } => None,
             ConfigLayerSource::LegacyManagedConfigTomlFromMdm => None,
         }
@@ -455,6 +456,30 @@ impl ConfigLayerStack {
                 Some(index) => layers.insert(index, user_layer),
                 None => layers.push(user_layer),
             }
+        }
+        Self {
+            layers,
+            model_provider_requirements: self.model_provider_requirements.clone(),
+            requirements: self.requirements.clone(),
+            requirements_toml: self.requirements_toml.clone(),
+            ignore_user_and_project_exec_policy_rules: self
+                .ignore_user_and_project_exec_policy_rules,
+            startup_warnings: self.startup_warnings.clone(),
+            is_projectless: self.is_projectless,
+        }
+    }
+
+    /// Returns a new stack with `layer` inserted at the position matching its
+    /// precedence, for callers that assemble a stack incrementally rather
+    /// than passing every layer to [`ConfigLayerStack::new`] at once.
+    pub fn with_layer_inserted_by_precedence(&self, layer: ConfigLayerEntry) -> Self {
+        let mut layers = self.layers.clone();
+        match layers
+            .iter()
+            .position(|existing| existing.name.precedence() > layer.name.precedence())
+        {
+            Some(index) => layers.insert(index, layer),
+            None => layers.push(layer),
         }
         Self {
             layers,

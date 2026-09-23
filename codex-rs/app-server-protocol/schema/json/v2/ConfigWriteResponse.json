@@ -198,6 +198,23 @@
           "type": "object"
         },
         {
+          "description": "Model configuration fetched from the ad-agent server. Outranks `SessionFlags`.",
+          "properties": {
+            "type": {
+              "enum": [
+                "serverConfig"
+              ],
+              "title": "ServerConfigConfigLayerSourceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "ServerConfigConfigLayerSource",
+          "type": "object"
+        },
+        {
           "description": "`managed_config.toml` was designed to be a config that was loaded as the last layer on top of everything else. This scheme did not quite work out as intended, but we keep this variant as a \"best effort\" while we phase out `managed_config.toml` in favor of `requirements.toml`.",
           "properties": {
             "file": {

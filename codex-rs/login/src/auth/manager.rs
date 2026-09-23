@@ -209,8 +209,11 @@ const REFRESH_TOKEN_INVALIDATED_MESSAGE: &str = "Your access token could not be 
 const REFRESH_TOKEN_UNKNOWN_MESSAGE: &str =
     "Your access token could not be refreshed. Please log out and sign in again.";
 const REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE: &str = "Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.";
-const REFRESH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
-pub(super) const REVOKE_TOKEN_URL: &str = "https://auth.openai.com/oauth/revoke";
+// [ad-agent] 刷新端点。和 server.rs 的 DEFAULT_ISSUER 必须同时改。
+const REFRESH_TOKEN_URL: &str = "https://quchenyang.com/oauth/token";
+// [ad-agent] 吊销端点。服务端暂未实现 /oauth/revoke，调用会 404；
+// logout 那条路只 warn 不中断（manager.rs:984），本地凭证照常清除。
+pub(super) const REVOKE_TOKEN_URL: &str = "https://quchenyang.com/oauth/revoke";
 pub const REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REFRESH_TOKEN_URL_OVERRIDE";
 pub const REVOKE_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REVOKE_TOKEN_URL_OVERRIDE";
 pub const CLIENT_ID_OVERRIDE_ENV_VAR: &str = "CODEX_APP_SERVER_LOGIN_CLIENT_ID";
@@ -1714,7 +1717,8 @@ struct RefreshResponse {
 }
 
 // Shared constant for token refresh (client id used for oauth token refresh flow)
-pub const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+// [ad-agent] 与服务端 OAuthClientRegistry 里登记的 client_id 一致。
+pub const CLIENT_ID: &str = "codex-cli";
 
 pub fn oauth_client_id() -> String {
     std::env::var(CLIENT_ID_OVERRIDE_ENV_VAR)

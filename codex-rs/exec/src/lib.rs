@@ -615,6 +615,11 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     )
     .await?;
     embedded_network_policy.activate(&mut config);
+    // [ad-agent] Model config must come from the server; refuse to start a session if the
+    // fetch failed (see `Config::ad_agent_config_status` doc comment).
+    if let Err(err) = &config.ad_agent_config_status {
+        anyhow::bail!("{err}");
+    }
     let resume_approvals_reviewer_override = cli_kv_overrides
         .iter()
         .any(|(key, _)| key == "approvals_reviewer")

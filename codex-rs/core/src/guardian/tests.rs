@@ -4059,6 +4059,7 @@ async fn guardian_review_session_config_uses_requirements_guardian_policy_config
         },
         codex_home.abs(),
         config_layer_stack,
+        Ok(()),
     )
     .await
     .expect("load config");

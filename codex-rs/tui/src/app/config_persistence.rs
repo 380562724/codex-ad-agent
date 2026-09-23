@@ -36,6 +36,7 @@ pub(super) fn resume_model_settings_for_overrides(
         matches!(
             &layer.name,
             ConfigLayerSource::SessionFlags
+                | ConfigLayerSource::ServerConfig
                 | ConfigLayerSource::User {
                     profile: Some(_),
                     ..

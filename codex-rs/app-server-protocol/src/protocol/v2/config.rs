@@ -96,6 +96,10 @@ pub enum ConfigLayerSource {
     /// Session-layer overrides supplied via `-c`/`--config`.
     SessionFlags,
 
+    /// Model configuration fetched from the ad-agent server. Outranks
+    /// `SessionFlags`.
+    ServerConfig,
+
     /// `managed_config.toml` was designed to be a config that was loaded
     /// as the last layer on top of everything else. This scheme did not quite
     /// work out as intended, but we keep this variant as a "best effort" while
@@ -127,6 +131,7 @@ impl ConfigLayerSource {
             }
             ConfigLayerSource::Project { .. } => 25,
             ConfigLayerSource::SessionFlags => 30,
+            ConfigLayerSource::ServerConfig => 35,
             ConfigLayerSource::LegacyManagedConfigTomlFromFile { .. } => 40,
             ConfigLayerSource::LegacyManagedConfigTomlFromMdm => 50,
         }

@@ -514,7 +514,7 @@ async fn external_editor_writable_directory_rejected_snapshot() -> Result<()> {
     let codex_home = app.chat_widget.config_ref().codex_home.clone();
     let fallback_home = dirs::home_dir()
         .expect("home directory")
-        .join(".codex")
+        .join(codex_utils_home_dir::DEFAULT_CODEX_HOME_DIR_NAME)
         .abs();
     let workspace_codex_home = app.chat_widget.config_ref().cwd.join(".codex");
     let permission_profile = PermissionProfile::workspace_write_with(

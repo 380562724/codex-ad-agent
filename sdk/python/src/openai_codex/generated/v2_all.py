@@ -928,6 +928,13 @@ class SessionFlagsConfigLayerSource(BaseModel):
     type: Annotated[Literal["sessionFlags"], Field(title="SessionFlagsConfigLayerSourceType")]
 
 
+class ServerConfigConfigLayerSource(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    type: Annotated[Literal["serverConfig"], Field(title="ServerConfigConfigLayerSourceType")]
+
+
 class LegacyManagedConfigTomlFromFileConfigLayerSource(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -958,6 +965,7 @@ class ConfigLayerSource(
         | UserConfigLayerSource
         | ProjectConfigLayerSource
         | SessionFlagsConfigLayerSource
+        | ServerConfigConfigLayerSource
         | LegacyManagedConfigTomlFromFileConfigLayerSource
         | LegacyManagedConfigTomlFromMdmConfigLayerSource
     ]
@@ -973,6 +981,7 @@ class ConfigLayerSource(
         | UserConfigLayerSource
         | ProjectConfigLayerSource
         | SessionFlagsConfigLayerSource
+        | ServerConfigConfigLayerSource
         | LegacyManagedConfigTomlFromFileConfigLayerSource
         | LegacyManagedConfigTomlFromMdmConfigLayerSource
     )

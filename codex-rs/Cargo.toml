@@ -2,6 +2,7 @@
 members = [
     "aws-auth",
     "analytics",
+    "ad-agent-config",
     "agent-graph-store",
     "agent-identity",
     "agent-roles",
@@ -168,6 +169,7 @@ license = "Apache-2.0"
 codex-realtime-webrtc = { path = "realtime-webrtc" }
 app_test_support = { path = "app-server/tests/common" }
 codex-analytics = { path = "analytics" }
+codex-ad-agent-config = { path = "ad-agent-config" }
 codex-agent-graph-store = { path = "agent-graph-store" }
 codex-agent-identity = { path = "agent-identity" }
 codex-agent-roles = { path = "agent-roles" }

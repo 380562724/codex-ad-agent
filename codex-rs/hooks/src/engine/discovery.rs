@@ -419,6 +419,7 @@ fn config_toml_source_path(layer: &ConfigLayerEntry) -> AbsolutePathBuf {
             synthetic_layer_path("<legacy-managed-config.toml-mdm>/managed_config.toml")
         }
         ConfigLayerSource::SessionFlags => synthetic_layer_path("<session-flags>/config.toml"),
+        ConfigLayerSource::ServerConfig => synthetic_layer_path("<server-config>/config.toml"),
     }
 }
 
@@ -828,7 +829,9 @@ fn hook_metadata_for_config_layer_source(source: &ConfigLayerSource) -> (HookSou
         ConfigLayerSource::Project { .. } => (HookSource::Project, false),
         ConfigLayerSource::Mdm { .. } => (HookSource::Mdm, true),
         ConfigLayerSource::EnterpriseManaged { .. } => (HookSource::CloudManagedConfig, true),
-        ConfigLayerSource::SessionFlags => (HookSource::SessionFlags, false),
+        ConfigLayerSource::SessionFlags | ConfigLayerSource::ServerConfig => {
+            (HookSource::SessionFlags, false)
+        }
         ConfigLayerSource::LegacyManagedConfigTomlFromFile { .. } => {
             (HookSource::LegacyManagedConfigFile, true)
         }

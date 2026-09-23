@@ -325,7 +325,9 @@ async fn editor_process_uses_protected_workspace_fallback_with_default_temporary
     let cwd = root.path().join("workspace");
     fs::create_dir(&codex_home).expect("create Codex home");
     fs::create_dir(&cwd).expect("create workspace");
-    let default_codex_home = dirs::home_dir().expect("home directory").join(".codex");
+    let default_codex_home = dirs::home_dir()
+        .expect("home directory")
+        .join(codex_utils_home_dir::DEFAULT_CODEX_HOME_DIR_NAME);
     let writable_default_codex_home = AbsolutePathBuf::from_absolute_path(&default_codex_home)
         .expect("absolute default Codex home");
     let policy = FileSystemSandboxPolicy::workspace_write(

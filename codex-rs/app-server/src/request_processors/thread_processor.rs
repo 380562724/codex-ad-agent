@@ -1412,6 +1412,12 @@ impl ThreadRequestProcessor {
                 .map_err(|err| config_load_error(&err))?;
         }
 
+        // [ad-agent] Model config must come from the server; refuse to start a thread if the
+        // fetch failed (see `Config::ad_agent_config_status` doc comment).
+        if let Err(err) = &config.ad_agent_config_status {
+            return Err(invalid_request(err.clone()));
+        }
+
         // Thread config can include project-local warnings absent at initialization.
         let mut config_warnings = config
             .startup_warnings

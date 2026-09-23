@@ -76,6 +76,11 @@ struct IdClaims {
     profile: Option<ProfileClaims>,
     #[serde(rename = "https://api.openai.com/auth", default)]
     auth: Option<AuthClaims>,
+    // [ad-agent] 我们的服务端签发扁平 claim，没有上游那层命名空间对象。
+    // account_id 一旦为空，reload_if_account_id_matches 会直接 Skipped，
+    // 刷新链路会判定为永久失败（manager.rs:2462），所以这个字段是必需的。
+    #[serde(default)]
+    account_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -172,18 +177,22 @@ pub(crate) fn parse_chatgpt_account_user_id(
 }
 
 pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoError> {
-    let claims: IdClaims = decode_jwt_payload(jwt)?;
-    let email = claims
-        .email
-        .or_else(|| claims.profile.and_then(|profile| profile.email));
+    let IdClaims {
+        email,
+        profile,
+        auth,
+        account_id,
+    } = decode_jwt_payload(jwt)?;
+    let email = email.or_else(|| profile.and_then(|profile| profile.email));
 
-    match claims.auth {
+    // [ad-agent] 命名空间 claim 优先（兼容上游签发的 token），缺失时回落到扁平 claim。
+    match auth {
         Some(auth) => Ok(IdTokenInfo {
             email,
             raw_jwt: jwt.to_string(),
             chatgpt_plan_type: auth.chatgpt_plan_type,
             chatgpt_user_id: auth.chatgpt_user_id.or(auth.user_id),
-            chatgpt_account_id: auth.chatgpt_account_id,
+            chatgpt_account_id: auth.chatgpt_account_id.or(account_id),
             chatgpt_account_is_fedramp: auth.chatgpt_account_is_fedramp,
         }),
         None => Ok(IdTokenInfo {
@@ -191,7 +200,7 @@ pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoErr
             raw_jwt: jwt.to_string(),
             chatgpt_plan_type: None,
             chatgpt_user_id: None,
-            chatgpt_account_id: None,
+            chatgpt_account_id: account_id,
             chatgpt_account_is_fedramp: false,
         }),
     }

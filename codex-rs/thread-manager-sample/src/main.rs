@@ -191,6 +191,8 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         application_auth_route_config: None,
         config_layer_stack: ConfigLayerStack::default(),
         startup_warnings: Vec::new(),
+        // [ad-agent] This sample builds `Config` by hand and never fetches server config.
+        ad_agent_config_status: Ok(()),
         bypass_hook_trust: false,
         model,
         service_tier: None,

@@ -392,7 +392,9 @@ fn render_debug_config_lines(
 
 fn render_non_file_layer_details(layer: &ConfigLayerEntry) -> Vec<Line<'static>> {
     match &layer.name {
-        ConfigLayerSource::SessionFlags => render_session_flag_details(&layer.config),
+        ConfigLayerSource::SessionFlags | ConfigLayerSource::ServerConfig => {
+            render_session_flag_details(&layer.config)
+        }
         ConfigLayerSource::Mdm { .. }
         | ConfigLayerSource::EnterpriseManaged { .. }
         | ConfigLayerSource::LegacyManagedConfigTomlFromMdm => render_non_file_layer_value(layer),
@@ -462,6 +464,7 @@ fn non_file_layer_value_label(source: &ConfigLayerSource) -> &'static str {
         ConfigLayerSource::EnterpriseManaged { .. } => "Enterprise-managed config value",
         ConfigLayerSource::PackagedDefaults { .. }
         | ConfigLayerSource::SessionFlags
+        | ConfigLayerSource::ServerConfig
         | ConfigLayerSource::System { .. }
         | ConfigLayerSource::User { .. }
         | ConfigLayerSource::Project { .. }

@@ -32,7 +32,6 @@ use crate::auth::save_auth;
 use crate::callback_params::LIFE_SCIENCES_OAUTH_STATE_SUFFIX;
 use crate::callback_params::LoginCallbackResult;
 use crate::callback_params::LoginOnboardingEntrypoint;
-use crate::default_client::originator;
 use crate::oauth::AuthorizationCodeGrant;
 use crate::oauth::AuthorizationRequest;
 use crate::oauth::CallbackError;
@@ -73,7 +72,9 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
-pub(super) const DEFAULT_ISSUER: &str = "https://auth.openai.com";
+// [ad-agent] 授权服务器换成我们自己的。注意：改这里还不够，刷新/吊销端点在
+// auth/manager.rs 里是独立常量，只改这一处会变成"登录成功、刷新时打到上游"的延迟故障。
+pub(super) const DEFAULT_ISSUER: &str = "https://quchenyang.com";
 const DEFAULT_PORT: u16 = 1455;
 // Keep in sync with the Codex CLI Hydra redirect URI allow-list.
 const FALLBACK_PORT: u16 = 1457;
@@ -424,7 +425,7 @@ async fn process_request(
             )
             .await
             {
-                Ok((tokens, client)) => {
+                Ok((tokens, _client)) => {
                     if let Err(message) = ensure_workspace_allowed(
                         opts.forced_chatgpt_workspace_id.as_deref(),
                         &tokens.id_token,
@@ -437,11 +438,10 @@ async fn process_request(
                             /*error_description*/ None,
                         );
                     }
-                    // Obtain API key via token-exchange and persist
-                    let api_key =
-                        obtain_api_key(&client, &opts.issuer, &opts.client_id, &tokens.id_token)
-                            .await
-                            .ok();
+                    // [ad-agent] 上游在这里用 RFC 8693 token-exchange 再换一把 OpenAI API key。
+                    // 我们的服务端不提供这种 grant，请求必然 400（结果本来也只是 .ok() 丢掉），
+                    // 所以整个去掉，省一次注定失败的往返。obtain_api_key 函数已一并删除。
+                    let api_key: Option<String> = None;
                     if let Err(err) = persist_tokens_async(
                         &opts.codex_home,
                         api_key.clone(),
@@ -589,13 +589,12 @@ fn build_authorize_url(
     state: &str,
     forced_chatgpt_workspace_ids: Option<&[String]>,
 ) -> io::Result<String> {
-    let originator = originator().value;
     let workspace_ids = forced_chatgpt_workspace_ids.map(|ids| ids.join(","));
-    let mut extra_parameters = vec![
-        ("id_token_add_organizations", "true"),
-        ("codex_cli_simplified_flow", "true"),
-        ("originator", originator.as_str()),
-    ];
+    // [ad-agent] 只保留 RFC 6749 的标准参数。上游这里还会附加几个私有参数
+    // （id_token_add_organizations / codex_cli_simplified_flow / originator，以及
+    // api.connectors.* scope）——我们的服务端不认，而且会出现在用户看得见的授权链接
+    // 里，露出上游品牌，所以整个去掉。
+    let mut extra_parameters: Vec<(&str, &str)> = Vec::new();
     if let Some(workspace_ids) = workspace_ids.as_deref() {
         extra_parameters.push(("allowed_workspace_id", workspace_ids));
     }
@@ -603,9 +602,7 @@ fn build_authorize_url(
         endpoint: &format!("{issuer}/oauth/authorize"),
         client_id,
         redirect_uri,
-        scope: Some(
-            "openid profile email offline_access api.connectors.read api.connectors.invoke",
-        ),
+        scope: Some("openid profile email offline_access"),
         resource: None,
         pkce,
         state,
@@ -1009,42 +1006,6 @@ fn html_escape(input: &str) -> String {
     escaped
 }
 
-/// Exchanges an authenticated ID token for an API-key style access token.
-pub(crate) async fn obtain_api_key(
-    client: &HttpClient,
-    issuer: &str,
-    client_id: &str,
-    id_token: &str,
-) -> io::Result<String> {
-    // Token exchange for an API key access token
-    #[derive(serde::Deserialize)]
-    struct ExchangeResp {
-        access_token: String,
-    }
-    let token_endpoint = format!("{}/oauth/token", issuer.trim_end_matches('/'));
-    let resp = client
-        .post(token_endpoint)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(format!(
-            "grant_type={}&client_id={}&requested_token={}&subject_token={}&subject_token_type={}",
-            urlencoding::encode("urn:ietf:params:oauth:grant-type:token-exchange"),
-            urlencoding::encode(client_id),
-            urlencoding::encode("openai-api-key"),
-            urlencoding::encode(id_token),
-            urlencoding::encode("urn:ietf:params:oauth:token-type:id_token")
-        ))
-        .send()
-        .await
-        .map_err(io::Error::other)?;
-    if !resp.status().is_success() {
-        return Err(io::Error::other(format!(
-            "api key exchange failed with status {}",
-            resp.status()
-        )));
-    }
-    let body: ExchangeResp = resp.json().await.map_err(io::Error::other)?;
-    Ok(body.access_token)
-}
 #[cfg(test)]
 mod tests {
     use super::html_escape;

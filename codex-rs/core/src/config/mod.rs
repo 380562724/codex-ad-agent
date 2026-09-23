@@ -617,6 +617,14 @@ pub struct Config {
     /// Warnings collected during config load that should be shown on startup.
     pub startup_warnings: Vec<String>,
 
+    // [ad-agent] Result of fetching model config from the server (`GET /agent/config`).
+    // `build_inner` never hard-fails on this so library callers (tests, non-interactive
+    // config loads) still get a `Config`; the real interactive entrypoints (cli/tui/exec/
+    // app-server) are responsible for checking this and refusing to start a session when
+    // it's an `Err`, since model config must come from the server (see SERVER-DRIVEN-CONFIG
+    // history) and there is no local fallback.
+    pub ad_agent_config_status: Result<(), String>,
+
     /// Optional override of model selection.
     pub model: Option<String>,
 
@@ -1504,6 +1512,24 @@ impl ConfigBuilder {
                 .unwrap_or(&codex_config::NoopThreadConfigLoader),
         )
         .await?;
+        // [ad-agent] Model config must come from the server (SERVER-DRIVEN-CONFIG history):
+        // fetched and inserted as its own `ConfigLayerSource::ServerConfig` layer, which
+        // outranks `SessionFlags` (a thread's persisted model selection is also carried as
+        // `SessionFlags`, and would otherwise win or lose against this fetch based on
+        // insertion order alone). A fetch failure (including not being logged in) does not
+        // fail `build_inner` itself — see `Config::ad_agent_config_status` doc comment for why
+        // that gate lives at the interactive entrypoints instead.
+        //
+        // Every caller that assembles a `ConfigLayerStack` from scratch (this one, and
+        // app-server's `ConfigManager::load_config_layers`) must route through
+        // `apply_server_config_layer` — see that function's doc comment.
+        let (config_layer_stack, ad_agent_overrides_result) =
+            codex_ad_agent_config::apply_server_config_layer(codex_home.as_path(), config_layer_stack)
+                .await;
+        let ad_agent_config_status = ad_agent_overrides_result
+            .as_ref()
+            .map(|_| ())
+            .map_err(ToString::to_string);
         let merged_toml = config_layer_stack.effective_config();
 
         // Note that each layer in ConfigLayerStack should have resolved
@@ -1534,6 +1560,7 @@ impl ConfigBuilder {
             harness_overrides,
             codex_home,
             config_layer_stack,
+            ad_agent_config_status,
         )
         .await
     }
@@ -1883,6 +1910,11 @@ impl Config {
         refreshed_layers: &ConfigLayerStack,
         codex_home: AbsolutePathBuf,
         default_zsh_path: Option<AbsolutePathBuf>,
+        // [ad-agent] see `Config::ad_agent_config_status` doc comment. Callers that already
+        // fetched server config for `refreshed_layers` should carry that status forward
+        // instead of re-fetching; callers that never fetch on this path (e.g. refreshing
+        // managed requirements from retained session layers) should pass `Ok(())`.
+        ad_agent_config_status: Result<(), String>,
     ) -> std::io::Result<Self> {
         let config_layer_stack =
             Self::layer_stack_preserving_session(session_layers, refreshed_layers)?;
@@ -1900,6 +1932,7 @@ impl Config {
             },
             codex_home,
             config_layer_stack,
+            ad_agent_config_status,
         )
         .await
     }
@@ -1975,6 +2008,9 @@ impl Config {
             ConfigOverrides::default(),
             codex_home,
             ConfigLayerStack::default(),
+            // [ad-agent] This is a bare-defaults fallback (no server round trip); it is only
+            // used by tests and by app-server as a last-resort degraded config.
+            Ok(()),
         )
         .await
     }
@@ -3188,6 +3224,7 @@ impl Config {
             overrides,
             codex_home,
             config_layer_stack,
+            Ok(()),
         )
         .await
     }
@@ -3198,6 +3235,8 @@ impl Config {
         overrides: ConfigOverrides,
         codex_home: AbsolutePathBuf,
         config_layer_stack: ConfigLayerStack,
+        // [ad-agent] see `Config::ad_agent_config_status` doc comment.
+        ad_agent_config_status: Result<(), String>,
     ) -> std::io::Result<Self> {
         // Keep the large config-construction future off small test thread stacks.
         Box::pin(async move {
@@ -4247,6 +4286,7 @@ impl Config {
             workspace_roots: workspace_roots.clone(),
             workspace_roots_explicit,
             startup_warnings,
+            ad_agent_config_status,
             permissions: Permissions {
                 approval_policy: constrained_approval_policy.value,
                 permission_profile_state,
@@ -4868,7 +4908,7 @@ fn normalize_guardian_policy_config(value: Option<&str>) -> Option<String> {
 
 /// Returns the path to the Codex configuration directory, which can be
 /// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.codex`.
+/// `~/.ad-agent` (see `codex_utils_home_dir::DEFAULT_CODEX_HOME_DIR_NAME`).
 ///
 /// - If `CODEX_HOME` is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.

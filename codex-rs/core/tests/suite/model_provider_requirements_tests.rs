@@ -188,6 +188,7 @@ X-Managed = "required"
                     .clone()
                     .map(codex_utils_absolute_path::AbsolutePathBuf::try_from)
                     .transpose()?,
+                overridden.ad_agent_config_status.clone(),
             )
             .await?;
             assert_eq!(rebuilt.model_provider, test.config.model_provider);

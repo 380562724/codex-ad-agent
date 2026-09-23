@@ -2218,6 +2218,11 @@ async fn load_config_with_worktree_source_policy(
         .build()
         .await
         .map_err(std::io::Error::other)?;
+    // [ad-agent] Model config must come from the server; refuse to start a session if the
+    // fetch failed (see `Config::ad_agent_config_status` doc comment).
+    if let Err(err) = &config.ad_agent_config_status {
+        return Err(std::io::Error::other(err.clone()));
+    }
     if let Some(worktree) = worktree {
         worktree
             .check_source_policy(

@@ -324,24 +324,13 @@ impl AccountRequestProcessor {
                     .await;
             }
             LoginAccountParams::Chatgpt {
-                app_brand,
+                // [ad-agent] 上游用这两个字段决定是否把登录成功页托管到 chatgpt.com。
+                // 我们没有这样的页面，也不该把用户导到上游品牌页，一律用本地成功页，故忽略。
+                app_brand: _,
                 codex_streamlined_login,
-                use_hosted_login_success_page,
+                use_hosted_login_success_page: _,
             } => {
-                let login_success_page = if use_hosted_login_success_page {
-                    let app_brand = match app_brand.unwrap_or_default() {
-                        LoginAppBrand::Codex => LoginSuccessPageBrand::Codex,
-                        LoginAppBrand::Chatgpt => LoginSuccessPageBrand::Chatgpt,
-                    };
-                    LoginSuccessPage::Hosted {
-                        url: CODEX_OPEN_APP_URL.parse().map_err(|err| {
-                            internal_error(format!("invalid Codex open app URL: {err}"))
-                        })?,
-                        app_brand,
-                    }
-                } else {
-                    LoginSuccessPage::default()
-                };
+                let login_success_page = LoginSuccessPage::default();
                 self.login_chatgpt_v2(request_id, codex_streamlined_login, login_success_page)
                     .await;
             }

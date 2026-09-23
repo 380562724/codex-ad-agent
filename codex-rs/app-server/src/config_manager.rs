@@ -223,6 +223,9 @@ impl ConfigManager {
                 .clone()
                 .map(AbsolutePathBuf::try_from)
                 .transpose()?,
+            // [ad-agent] Already fetched server config for `refreshed_config`; carry the
+            // status forward instead of re-fetching.
+            refreshed_config.ad_agent_config_status.clone(),
         )
         .await?;
         config.application_network_policy = refreshed_config.application_network_policy;
@@ -250,6 +253,10 @@ impl ConfigManager {
             &refreshed_layers,
             AbsolutePathBuf::from_absolute_path(&self.codex_home)?,
             /*default_zsh_path*/ None,
+            // [ad-agent] This path refreshes managed requirements from retained session
+            // layers without re-fetching server config (see the doc comment above); there is
+            // no fetch result to carry forward.
+            Ok(()),
         )
         .await?;
         self.apply_network_policy(&mut config);
@@ -496,9 +503,14 @@ impl ConfigManager {
             self.thread_config_loader.as_ref(),
         )
         .await;
-        let layers = result?;
+        let stack = result?;
         self.check_application_policy_load(&policy_load)?;
-        Ok(layers)
+        // [ad-agent] Must route through `apply_server_config_layer` like `build_inner` does —
+        // see that function's doc comment. A fetch failure here is not fatal to this call;
+        // ad_agent_config_status gating happens at the interactive entrypoints, not here.
+        let (stack, _ad_agent_overrides_result) =
+            codex_ad_agent_config::apply_server_config_layer(&self.codex_home, stack).await;
+        Ok(stack)
     }
 
     fn apply_runtime_feature_enablement(&self, config: &mut Config) {
