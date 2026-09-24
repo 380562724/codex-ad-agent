@@ -76,8 +76,9 @@ mod tests {
 
     #[test]
     fn treats_arrays_as_leaf_values_not_nested_paths() {
-        let doc: TomlValue = toml::from_str("supported_reasoning_levels = []\ntags = [\"a\", \"b\"]")
-            .expect("fixture should parse as TOML");
+        let doc: TomlValue =
+            toml::from_str("supported_reasoning_levels = []\ntags = [\"a\", \"b\"]")
+                .expect("fixture should parse as TOML");
 
         let mut flattened = flatten_toml_table(&doc);
         flattened.sort_by(|a, b| a.0.cmp(&b.0));

@@ -10,7 +10,9 @@ project_doc_fallback_filenames = []
 background_terminal_max_timeout = 300000
 file_opener = "vscode"
 hide_agent_reasoning = false
-chatgpt_base_url = "https://chatgpt.com/backend-api/"
+# [ad-agent] Keep in sync with codex_login::DEFAULT_CHATGPT_BASE_URL. ChatGPT-backend features
+# send the logged-in (Cowork) token to this base URL, so it must never point at chatgpt.com.
+chatgpt_base_url = "https://quchenyang.com/backend-api/"
 project_root_markers = [".git"]
 
 [history]

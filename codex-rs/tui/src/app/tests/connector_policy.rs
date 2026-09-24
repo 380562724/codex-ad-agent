@@ -65,6 +65,8 @@ async fn installed_connector_mentions_ignore_stale_thread_workspace_and_account(
 #[tokio::test]
 async fn queued_connector_fetches_are_bound_to_their_original_account() -> Result<()> {
     let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    app.chat_widget
+        .set_feature_enabled(Feature::Apps, /*enabled*/ true);
     let cwd = app.chat_widget.config_ref().cwd.to_path_buf();
     app.chat_widget
         .handle_thread_session(test_thread_session(ThreadId::new(), cwd));
@@ -102,6 +104,8 @@ async fn queued_connector_fetches_are_bound_to_their_original_account() -> Resul
 async fn app_list_notifications_revalidate_installed_mentions_and_the_current_directory()
 -> Result<()> {
     let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    app.chat_widget
+        .set_feature_enabled(Feature::Apps, /*enabled*/ true);
     let thread_id = ThreadId::new();
     let cwd = app.chat_widget.config_ref().cwd.to_path_buf();
     app.chat_widget

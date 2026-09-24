@@ -81,6 +81,12 @@ struct IdClaims {
     // 刷新链路会判定为永久失败（manager.rs:2462），所以这个字段是必需的。
     #[serde(default)]
     account_id: Option<String>,
+    // [ad-agent] 扁平 claim 里用户 id 就是标准的 sub。它必须能解析出来：same_owner 靠
+    // (chatgpt_user_id, account_id) 判断刷新前后是不是同一个人，user id 为空会让每次刷新
+    // token 都被当成换号，进而清空应用网络策略，之后所有请求都报
+    // "application network policy is unavailable"。
+    #[serde(default)]
+    sub: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -182,6 +188,7 @@ pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoErr
         profile,
         auth,
         account_id,
+        sub,
     } = decode_jwt_payload(jwt)?;
     let email = email.or_else(|| profile.and_then(|profile| profile.email));
 
@@ -199,7 +206,9 @@ pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoErr
             email,
             raw_jwt: jwt.to_string(),
             chatgpt_plan_type: None,
-            chatgpt_user_id: None,
+            // [ad-agent] Only Cowork-issued tokens (identified by the flat account_id claim)
+            // carry the user id in `sub`; other namespace-less tokens keep upstream behavior.
+            chatgpt_user_id: account_id.as_ref().and(sub),
             chatgpt_account_id: account_id,
             chatgpt_account_is_fedramp: false,
         }),

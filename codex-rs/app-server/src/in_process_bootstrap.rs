@@ -79,9 +79,10 @@ impl EmbeddedNetworkPolicy {
             .clone()
             .with_network_policy(self.local.policy());
         let endpoint = codex_backend_client::Client::new(
+            // [ad-agent] See `codex_login::DEFAULT_CHATGPT_BASE_URL`.
             auth.chatgpt_base_url
                 .as_deref()
-                .unwrap_or("https://chatgpt.com/backend-api/"),
+                .unwrap_or(codex_login::DEFAULT_CHATGPT_BASE_URL),
             factory.clone(),
         )
         .config_bundle_url();

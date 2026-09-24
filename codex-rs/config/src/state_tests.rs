@@ -423,7 +423,9 @@ fn server_config_outranks_session_flags() {
     let effective = stack.effective_config();
 
     assert_eq!(
-        effective.get("model_provider").and_then(toml::Value::as_str),
+        effective
+            .get("model_provider")
+            .and_then(toml::Value::as_str),
         Some("cowork"),
         "server-driven config must not be overridable by a same-precedence session flags layer"
     );
@@ -455,7 +457,9 @@ fn with_layer_inserted_by_precedence_keeps_layers_sorted() {
     let effective = stack.effective_config();
 
     assert_eq!(
-        effective.get("model_provider").and_then(toml::Value::as_str),
+        effective
+            .get("model_provider")
+            .and_then(toml::Value::as_str),
         Some("cowork"),
         "layer inserted after the fact must still be sorted ahead of a lower-precedence layer"
     );

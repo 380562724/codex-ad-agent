@@ -131,3 +131,45 @@ async fn captured_credentials_are_revoked_if_account_changes_before_client_const
         ))
     ));
 }
+
+// [ad-agent] Cowork tokens carry flat `sub` claims. A plain refresh must not be treated as an
+// owner change, or the application network policy is invalidated after every refresh.
+#[test]
+fn flat_cowork_claims_refresh_keeps_owner_and_network_policy() {
+    fn cowork_auth(user: &str, token: &str) -> CodexAuth {
+        let claims = json!({"jti": token, "sub": user, "account_id": "account-a"});
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims.to_string());
+        CodexAuth::from_external_chatgpt_tokens(
+            &format!("header.{payload}.signature"),
+            "account-a",
+            /*chatgpt_plan_type*/ None,
+        )
+        .unwrap()
+    }
+
+    let mut manager = AuthManager::from_optional_auth_for_testing(/*auth*/ None);
+    let controller = NetworkPolicyController::default();
+    let policy = controller.policy();
+    Arc::get_mut(&mut manager).unwrap().auth_route_config =
+        AuthRouteConfig::from_http_client_factory(
+            manager
+                .http_client_factory()
+                .with_network_policy(policy.clone()),
+        );
+    let endpoint = "https://example.com/".parse().unwrap();
+    let changes = manager.auth_change_state_receiver();
+    manager.set_cached_auth(Some(cowork_auth("user-a", "token-1")));
+    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
+    let owner_generation = changes.borrow().owner_generation;
+    let factory = manager.http_client_factory();
+
+    manager.set_cached_auth(Some(cowork_auth("user-a", "token-2")));
+
+    assert_eq!(
+        (
+            changes.borrow().owner_generation,
+            factory.network_policy().acquire(&endpoint).is_ok()
+        ),
+        (owner_generation, true)
+    );
+}

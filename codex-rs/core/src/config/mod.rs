@@ -1525,8 +1525,11 @@ impl ConfigBuilder {
         // app-server's `ConfigManager::load_config_layers`) must route through
         // `apply_server_config_layer` — see that function's doc comment.
         let (config_layer_stack, ad_agent_overrides_result) =
-            codex_ad_agent_config::apply_server_config_layer(codex_home.as_path(), config_layer_stack)
-                .await;
+            codex_ad_agent_config::apply_server_config_layer(
+                codex_home.as_path(),
+                config_layer_stack,
+            )
+            .await;
         let ad_agent_config_status = ad_agent_overrides_result
             .as_ref()
             .map(|_| ())
@@ -4407,9 +4410,10 @@ impl Config {
             model_reasoning_summary: cfg.model_reasoning_summary,
             model_catalog,
             model_verbosity: cfg.model_verbosity,
+            // [ad-agent] See `codex_login::DEFAULT_CHATGPT_BASE_URL`.
             chatgpt_base_url: cfg
                 .chatgpt_base_url
-                .unwrap_or("https://chatgpt.com/backend-api/".to_string()),
+                .unwrap_or(codex_login::DEFAULT_CHATGPT_BASE_URL.to_string()),
             respect_system_proxy,
             apps_mcp_product_sku: cfg.apps_mcp_product_sku.clone(),
             responses_api_metadata: cfg.responses_api_metadata.unwrap_or_default(),
@@ -4468,7 +4472,13 @@ impl Config {
                 .and_then(|tui| tui.disable_paste_burst)
                 .or(cfg.disable_paste_burst)
                 .unwrap_or(false),
-            analytics_enabled: cfg.analytics.as_ref().and_then(|a| a.enabled),
+            // [ad-agent] Analytics / OTel metrics go to OpenAI endpoints (chatgpt.com, statsig)
+            // with the logged-in token, so they stay off unless explicitly enabled.
+            analytics_enabled: cfg
+                .analytics
+                .as_ref()
+                .and_then(|a| a.enabled)
+                .or(Some(false)),
             feedback_enabled: cfg
                 .feedback
                 .as_ref()

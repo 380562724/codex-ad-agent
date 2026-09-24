@@ -1348,7 +1348,8 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::Apps,
         key: "apps",
         stage: Stage::Stable,
-        default_enabled: true,
+        // [ad-agent] Apps/connectors are served by the ChatGPT backend; off by default.
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::Psp,
@@ -1516,7 +1517,8 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::RemotePlugin,
         key: "remote_plugin",
         stage: Stage::Stable,
-        default_enabled: true,
+        // [ad-agent] The remote plugin catalog is served by the ChatGPT backend; off by default.
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::PluginSharing,

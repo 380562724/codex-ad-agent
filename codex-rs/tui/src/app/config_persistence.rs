@@ -36,8 +36,7 @@ pub(super) fn resume_model_settings_for_overrides(
         match &layer.name {
             ConfigLayerSource::SessionFlags
             | ConfigLayerSource::User {
-                profile: Some(_),
-                ..
+                profile: Some(_), ..
             } => ["model", "model_provider", "model_reasoning_effort"]
                 .iter()
                 .any(|key| layer.config.get(*key).is_some()),

@@ -233,3 +233,22 @@ fn workspace_account_detection_matches_workspace_plans() {
     };
     assert_eq!(personal.is_workspace_account(), false);
 }
+
+// [ad-agent] Cowork issues flat claims (sub / account_id) without the OpenAI namespace.
+#[test]
+fn id_token_info_parses_flat_cowork_claims() {
+    let fake_jwt = fake_jwt(serde_json::json!({
+        "sub": "user-123",
+        "account_id": "account-456",
+    }));
+
+    let info = parse_chatgpt_jwt_claims(&fake_jwt).expect("should parse");
+
+    assert_eq!(
+        (
+            info.chatgpt_user_id.as_deref(),
+            info.chatgpt_account_id.as_deref()
+        ),
+        (Some("user-123"), Some("account-456"))
+    );
+}

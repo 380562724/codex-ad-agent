@@ -1274,6 +1274,7 @@ async fn plugins_popup_remote_section_fallback_states_when_remote_plugin_disable
 
     let (mut remote_chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     remote_chat.set_feature_enabled(Feature::Plugins, /*enabled*/ true);
+    remote_chat.set_feature_enabled(Feature::RemotePlugin, /*enabled*/ true);
     remote_chat.add_plugins_output();
     let remote_cwd = remote_chat.config.cwd.clone();
     remote_chat.on_plugins_loaded(
@@ -4266,6 +4267,7 @@ async fn reasoning_popup_escape_returns_to_model_popup() {
 #[tokio::test]
 async fn account_change_dismisses_the_previous_app_directory_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_feature_enabled(Feature::Apps, /*enabled*/ true);
     chat.thread_id = Some(ThreadId::new());
     set_chatgpt_auth(&mut chat);
     chat.on_connectors_loaded(

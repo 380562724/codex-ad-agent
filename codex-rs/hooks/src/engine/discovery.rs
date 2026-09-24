@@ -419,9 +419,7 @@ fn config_toml_source_path(layer: &ConfigLayerEntry) -> AbsolutePathBuf {
             synthetic_layer_path("<legacy-managed-config.toml-mdm>/managed_config.toml")
         }
         ConfigLayerSource::SessionFlags => synthetic_layer_path("<session-flags>/config.toml"),
-        ConfigLayerSource::ServerDefaults => {
-            synthetic_layer_path("<server-defaults>/config.toml")
-        }
+        ConfigLayerSource::ServerDefaults => synthetic_layer_path("<server-defaults>/config.toml"),
         ConfigLayerSource::ServerConfig => synthetic_layer_path("<server-config>/config.toml"),
     }
 }

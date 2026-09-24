@@ -193,7 +193,9 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/agent/config"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("defaults = \"qwen3.8-max\"\n"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string("defaults = \"qwen3.8-max\"\n"),
+            )
             .mount(&server)
             .await;
 

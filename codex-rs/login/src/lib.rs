@@ -2,6 +2,13 @@ pub mod auth;
 pub mod auth_env_telemetry;
 pub mod test_support;
 pub mod token_data;
+
+/// [ad-agent] Default for `chatgpt_base_url`. Upstream defaults it to
+/// `https://chatgpt.com/backend-api/`, and every ChatGPT-backend feature (plugins, apps,
+/// usage, cloud config, ...) sends the logged-in bearer token there. Here that token is a
+/// Cowork token, so it must never reach chatgpt.com: point the default at our own server.
+/// Endpoints it doesn't implement return 404 (not 401, so no token-refresh storm).
+pub const DEFAULT_CHATGPT_BASE_URL: &str = "https://quchenyang.com/backend-api/";
 pub use auth::WorkspaceRouting;
 pub use auth::WorkspaceRoutingRequest;
 pub use auth::WorkspaceRoutingResolver;

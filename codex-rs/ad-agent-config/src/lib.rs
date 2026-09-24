@@ -84,7 +84,10 @@ async fn fetch_model_overrides_with_auth_manager(
 pub async fn apply_server_config_layer(
     codex_home: &Path,
     stack: ConfigLayerStack,
-) -> (ConfigLayerStack, Result<ServerConfigOverrides, AdAgentConfigError>) {
+) -> (
+    ConfigLayerStack,
+    Result<ServerConfigOverrides, AdAgentConfigError>,
+) {
     let overrides_result = fetch_model_overrides(codex_home).await;
     let stack = match &overrides_result {
         Ok(overrides) => with_server_config_layers(stack, overrides),
@@ -127,10 +130,10 @@ mod tests {
     use codex_config::ConfigLayerEntry;
     use codex_config::ConfigLayerSource;
     use codex_config::ConfigLayerStack;
-    use codex_utils_absolute_path::AbsolutePathBuf;
     use codex_login::AuthManager;
     use codex_login::CodexAuth;
     use codex_login::test_support::auth_manager_from_optional_auth;
+    use codex_utils_absolute_path::AbsolutePathBuf;
     use toml::Value as TomlValue;
 
     #[tokio::test]
@@ -153,9 +156,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_string("model = \"qwen3.8-max\"\n"))
             .mount(&server)
             .await;
-        let auth_manager = auth_manager_from_optional_auth(Some(CodexAuth::from_api_key(
-            "cached-api-key",
-        )));
+        let auth_manager =
+            auth_manager_from_optional_auth(Some(CodexAuth::from_api_key("cached-api-key")));
 
         let overrides = fetch_model_overrides_with_auth_manager(
             &auth_manager,
@@ -188,15 +190,14 @@ mod tests {
             "#,
         )
         .expect("user config should parse");
-        let stack = ConfigLayerStack::default().with_layer_inserted_by_precedence(
-            ConfigLayerEntry::new(
+        let stack =
+            ConfigLayerStack::default().with_layer_inserted_by_precedence(ConfigLayerEntry::new(
                 ConfigLayerSource::User {
                     file: user_file,
                     profile: None,
                 },
                 user_config,
-            ),
-        );
+            ));
         let overrides = ServerConfigOverrides {
             enforced: vec![(
                 "model_provider".to_string(),
