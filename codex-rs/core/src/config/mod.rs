@@ -1513,10 +1513,11 @@ impl ConfigBuilder {
         )
         .await?;
         // [ad-agent] Model config must come from the server (SERVER-DRIVEN-CONFIG history):
-        // fetched and inserted as its own `ConfigLayerSource::ServerConfig` layer, which
-        // outranks `SessionFlags` (a thread's persisted model selection is also carried as
-        // `SessionFlags`, and would otherwise win or lose against this fetch based on
-        // insertion order alone). A fetch failure (including not being logged in) does not
+        // fetched and inserted as a `ConfigLayerSource::ServerConfig` layer for enforced
+        // entries, which outranks `SessionFlags` (a thread's persisted model selection is also
+        // carried as `SessionFlags`, and would otherwise win or lose against this fetch based
+        // on insertion order alone), plus a `ConfigLayerSource::ServerDefaults` layer for the
+        // server's `[defaults]`, which ranks below the user's own `config.toml`. A fetch failure (including not being logged in) does not
         // fail `build_inner` itself — see `Config::ad_agent_config_status` doc comment for why
         // that gate lives at the interactive entrypoints instead.
         //

@@ -96,8 +96,12 @@ pub enum ConfigLayerSource {
     /// Session-layer overrides supplied via `-c`/`--config`.
     SessionFlags,
 
-    /// Model configuration fetched from the ad-agent server. Outranks
-    /// `SessionFlags`.
+    /// Defaults from the `[defaults]` table of the ad-agent server config.
+    /// Ranks just below `User`, so a user's own choice wins.
+    ServerDefaults,
+
+    /// Enforced configuration fetched from the ad-agent server (everything
+    /// outside its `[defaults]` table). Outranks `SessionFlags`.
     ServerConfig,
 
     /// `managed_config.toml` was designed to be a config that was loaded
@@ -122,6 +126,7 @@ impl ConfigLayerSource {
             ConfigLayerSource::Mdm { .. } => 0,
             ConfigLayerSource::System { .. } => 10,
             ConfigLayerSource::EnterpriseManaged { .. } => 15,
+            ConfigLayerSource::ServerDefaults => 19,
             ConfigLayerSource::User { profile, .. } => {
                 if profile.is_some() {
                     21

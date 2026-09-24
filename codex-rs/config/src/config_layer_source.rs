@@ -12,6 +12,12 @@ pub enum ConfigLayerSource {
     System { file: AbsolutePathBuf },
     /// Configuration delivered by an enterprise cloud bundle.
     EnterpriseManaged { id: String, name: String },
+    /// [ad-agent] Defaults from the `[defaults]` table of the ad-agent server config
+    /// (e.g. which model / reasoning effort to use when the user hasn't picked one).
+    /// Deliberately ranks just below `User`: a choice the user made (persisted to their
+    /// `config.toml` by the TUI) must survive restarts, while `ServerConfig` still enforces
+    /// everything outside `[defaults]`.
+    ServerDefaults,
     /// User configuration, optionally augmented by a selected profile.
     User {
         file: AbsolutePathBuf,
@@ -21,10 +27,11 @@ pub enum ConfigLayerSource {
     Project { dot_codex_folder: AbsolutePathBuf },
     /// Overrides supplied for the current session.
     SessionFlags,
-    /// Model configuration fetched from the ad-agent server. Must outrank
-    /// `SessionFlags` (a thread's persisted model selection is also carried
-    /// as `SessionFlags` and would otherwise win or lose based on insertion
-    /// order alone, since both would share the same precedence).
+    /// [ad-agent] Enforced configuration fetched from the ad-agent server (everything outside
+    /// its `[defaults]` table, e.g. the model provider connection). Must outrank every local
+    /// layer, including `SessionFlags` (a thread's persisted model selection is also carried
+    /// as `SessionFlags` and would otherwise win or lose based on insertion order alone,
+    /// since both would share the same precedence).
     ServerConfig,
     /// Legacy managed configuration loaded from a file.
     LegacyManagedConfigTomlFromFile { file: AbsolutePathBuf },
@@ -41,6 +48,7 @@ impl ConfigLayerSource {
             ConfigLayerSource::Mdm { .. } => 0,
             ConfigLayerSource::System { .. } => 10,
             ConfigLayerSource::EnterpriseManaged { .. } => 15,
+            ConfigLayerSource::ServerDefaults => 19,
             ConfigLayerSource::User { profile, .. } => {
                 if profile.is_some() {
                     21
@@ -105,6 +113,7 @@ pub fn format_config_layer_source(source: &ConfigLayerSource, config_toml_file: 
             )
         }
         ConfigLayerSource::SessionFlags => "session-flags".to_string(),
+        ConfigLayerSource::ServerDefaults => "server-defaults".to_string(),
         ConfigLayerSource::ServerConfig => "server-config".to_string(),
         ConfigLayerSource::LegacyManagedConfigTomlFromFile { file } => {
             format!("legacy managed_config.toml ({})", file.as_path().display())

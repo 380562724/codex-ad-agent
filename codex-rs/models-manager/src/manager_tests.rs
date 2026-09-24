@@ -741,6 +741,56 @@ async fn dynamic_manager_preserves_requested_model_when_fallback_is_allowed() {
 }
 
 #[tokio::test]
+async fn dynamic_manager_keeps_requested_model_listed_in_fetched_catalog() {
+    let codex_home = tempdir().expect("temp dir");
+    let endpoint = TestModelsEndpoint::new(vec![vec![
+        remote_model("provider-default", "Default", /*priority*/ 0),
+        remote_model("user-picked", "User Picked", /*priority*/ 1),
+    ]]);
+    let manager = openai_manager_for_tests(codex_home.path().to_path_buf(), endpoint);
+    manager
+        .list_models(RefreshStrategy::Online, DEFAULT_HTTP_CLIENT_FACTORY)
+        .await;
+    let requested_model = Some("user-picked".to_string());
+
+    let model = manager
+        .get_default_model(
+            &requested_model,
+            /*allow_provider_model_fallback*/ false,
+            RefreshStrategy::Online,
+            DEFAULT_HTTP_CLIENT_FACTORY,
+        )
+        .await;
+
+    assert_eq!(model, "user-picked");
+}
+
+#[tokio::test]
+async fn dynamic_manager_replaces_model_missing_from_fetched_catalog() {
+    let codex_home = tempdir().expect("temp dir");
+    let endpoint = TestModelsEndpoint::new(vec![vec![
+        remote_model("provider-default", "Default", /*priority*/ 0),
+        remote_model("provider-other", "Other", /*priority*/ 1),
+    ]]);
+    let manager = openai_manager_for_tests(codex_home.path().to_path_buf(), endpoint);
+    manager
+        .list_models(RefreshStrategy::Online, DEFAULT_HTTP_CLIENT_FACTORY)
+        .await;
+    let requested_model = Some("withdrawn-model".to_string());
+
+    let model = manager
+        .get_default_model(
+            &requested_model,
+            /*allow_provider_model_fallback*/ false,
+            RefreshStrategy::Online,
+            DEFAULT_HTTP_CLIENT_FACTORY,
+        )
+        .await;
+
+    assert_eq!(model, "provider-default");
+}
+
+#[tokio::test]
 async fn get_model_info_tracks_fallback_usage() {
     let codex_home = tempdir().expect("temp dir");
     let config = ModelsManagerConfig::default();

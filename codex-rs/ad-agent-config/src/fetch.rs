@@ -19,12 +19,27 @@ impl From<AdAgentConfigError> for std::io::Error {
     }
 }
 
+/// Name of the top-level table in the server config whose keys are defaults rather than
+/// enforced values (see [`ServerConfigOverrides`]).
+const DEFAULTS_TABLE: &str = "defaults";
+
+/// The server config, flattened into `cli_overrides`-style dotted entries and split by how
+/// strongly each entry applies.
+#[derive(Debug, Default, PartialEq)]
+pub struct ServerConfigOverrides {
+    /// Everything outside `[defaults]`. Enforced: outranks every local config layer.
+    pub enforced: Vec<(String, TomlValue)>,
+    /// Keys under `[defaults]`, with the table prefix stripped. Used only when the user
+    /// hasn't set the key locally (e.g. which model to use until the user picks one).
+    pub defaults: Vec<(String, TomlValue)>,
+}
+
 /// Fetches the `/agent/config` TOML document and flattens it into `cli_overrides` entries.
 pub(crate) async fn fetch_model_overrides_from(
     url: &str,
     access_token: &str,
     http_client: &reqwest::Client,
-) -> Result<Vec<(String, TomlValue)>, AdAgentConfigError> {
+) -> Result<ServerConfigOverrides, AdAgentConfigError> {
     let response = http_client
         .get(url)
         .bearer_auth(access_token)
@@ -43,10 +58,28 @@ pub(crate) async fn fetch_model_overrides_from(
         .text()
         .await
         .map_err(|err| AdAgentConfigError::Unavailable(err.to_string()))?;
-    let document: TomlValue =
+    let document: toml::Table =
         toml::from_str(&body).map_err(|err| AdAgentConfigError::Unavailable(err.to_string()))?;
 
-    Ok(flatten_toml_table(&document))
+    split_server_config(document)
+}
+
+fn split_server_config(
+    mut document: toml::Table,
+) -> Result<ServerConfigOverrides, AdAgentConfigError> {
+    let defaults = match document.remove(DEFAULTS_TABLE) {
+        None => Vec::new(),
+        Some(defaults @ TomlValue::Table(_)) => flatten_toml_table(&defaults),
+        Some(_) => {
+            return Err(AdAgentConfigError::Unavailable(format!(
+                "`{DEFAULTS_TABLE}` in server config must be a table"
+            )));
+        }
+    };
+    Ok(ServerConfigOverrides {
+        enforced: flatten_toml_table(&TomlValue::Table(document)),
+        defaults,
+    })
 }
 
 #[cfg(test)]
@@ -61,6 +94,7 @@ mod tests {
     use wiremock::matchers::path;
 
     use super::AdAgentConfigError;
+    use super::ServerConfigOverrides;
     use super::fetch_model_overrides_from;
 
     #[tokio::test]
@@ -87,11 +121,91 @@ mod tests {
 
         assert_eq!(
             overrides,
-            vec![(
-                "model".to_string(),
-                TomlValue::String("qwen3.8-max".to_string())
-            )]
+            ServerConfigOverrides {
+                enforced: vec![(
+                    "model".to_string(),
+                    TomlValue::String("qwen3.8-max".to_string())
+                )],
+                defaults: Vec::new(),
+            }
         );
+    }
+
+    #[tokio::test]
+    async fn splits_defaults_table_from_enforced_entries() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/agent/config"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"
+                model_provider = "cowork"
+
+                [model_providers.cowork]
+                base_url = "https://example.invalid/llm/v1"
+
+                [defaults]
+                model = "qwen3.8-max"
+                model_reasoning_effort = "high"
+                "#,
+            ))
+            .mount(&server)
+            .await;
+
+        let mut overrides = fetch_model_overrides_from(
+            &format!("{}/agent/config", server.uri()),
+            "test-token",
+            &reqwest::Client::new(),
+        )
+        .await
+        .expect("request should succeed");
+        overrides.enforced.sort_by(|a, b| a.0.cmp(&b.0));
+        overrides.defaults.sort_by(|a, b| a.0.cmp(&b.0));
+
+        assert_eq!(
+            overrides,
+            ServerConfigOverrides {
+                enforced: vec![
+                    (
+                        "model_provider".to_string(),
+                        TomlValue::String("cowork".to_string())
+                    ),
+                    (
+                        "model_providers.cowork.base_url".to_string(),
+                        TomlValue::String("https://example.invalid/llm/v1".to_string())
+                    ),
+                ],
+                defaults: vec![
+                    (
+                        "model".to_string(),
+                        TomlValue::String("qwen3.8-max".to_string())
+                    ),
+                    (
+                        "model_reasoning_effort".to_string(),
+                        TomlValue::String("high".to_string())
+                    ),
+                ],
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_non_table_defaults() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/agent/config"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("defaults = \"qwen3.8-max\"\n"))
+            .mount(&server)
+            .await;
+
+        let err = fetch_model_overrides_from(
+            &format!("{}/agent/config", server.uri()),
+            "test-token",
+            &reqwest::Client::new(),
+        )
+        .await
+        .expect_err("non-table defaults should be an error");
+
+        assert!(matches!(err, AdAgentConfigError::Unavailable(_)));
     }
 
     #[tokio::test]

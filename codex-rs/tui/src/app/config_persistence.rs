@@ -33,17 +33,22 @@ pub(super) fn resume_model_settings_for_overrides(
     harness_overrides: &ConfigOverrides,
 ) -> crate::app_server_session::ResumeModelSettings {
     let has_layer_override = config.config_layer_stack.layers_high_to_low().any(|layer| {
-        matches!(
-            &layer.name,
+        match &layer.name {
             ConfigLayerSource::SessionFlags
-                | ConfigLayerSource::ServerConfig
-                | ConfigLayerSource::User {
-                    profile: Some(_),
-                    ..
-                }
-        ) && ["model", "model_provider", "model_reasoning_effort"]
-            .iter()
-            .any(|key| layer.config.get(*key).is_some())
+            | ConfigLayerSource::User {
+                profile: Some(_),
+                ..
+            } => ["model", "model_provider", "model_reasoning_effort"]
+                .iter()
+                .any(|key| layer.config.get(*key).is_some()),
+            // [ad-agent] The server always enforces `model_provider` (the gateway connection),
+            // so that alone must not discard a resumed thread's own model choice; only a
+            // server-enforced model / effort does. `ServerDefaults` is never an override.
+            ConfigLayerSource::ServerConfig => ["model", "model_reasoning_effort"]
+                .iter()
+                .any(|key| layer.config.get(*key).is_some()),
+            _ => false,
+        }
     });
     if harness_overrides.model.is_some()
         || harness_overrides.model_provider.is_some()

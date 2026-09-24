@@ -1898,6 +1898,7 @@ dependencies = [
  "codex-config",
  "codex-http-client",
  "codex-login",
+ "codex-utils-absolute-path",
  "pretty_assertions",
  "reqwest 0.12.28",
  "tempfile",

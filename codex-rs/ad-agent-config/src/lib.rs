@@ -1,6 +1,6 @@
-// [ad-agent] Fetches model configuration from the server so it can be inserted as a
-// dedicated `ConfigLayerSource::ServerConfig` layer (see `apply_server_config_layer` and
-// core/src/config/mod.rs `build_inner`). Every caller that builds a `ConfigLayerStack` from
+// [ad-agent] Fetches model configuration from the server so it can be inserted as dedicated
+// `ConfigLayerSource::ServerConfig` (enforced) and `ConfigLayerSource::ServerDefaults` layers
+// (see `apply_server_config_layer` and core/src/config/mod.rs `build_inner`). Every caller that builds a `ConfigLayerStack` from
 // scratch (core's `build_inner`, and app-server's `ConfigManager::load_config_layers`) must
 // route through `apply_server_config_layer` — otherwise that caller's effective config silently
 // falls back to whatever local/session model is on disk, even though the server fetch itself
@@ -21,9 +21,9 @@ use codex_login::AuthCredentialsStoreMode;
 use codex_login::AuthKeyringBackendKind;
 use codex_login::AuthManager;
 use codex_login::AuthRouteConfig;
-use toml::Value as TomlValue;
 
 pub use fetch::AdAgentConfigError;
+pub use fetch::ServerConfigOverrides;
 
 const DEFAULT_CONFIG_ENDPOINT: &str = "https://quchenyang.com/agent/config";
 const OVERRIDE_ENV: &str = "AD_AGENT_CONFIG_URL";
@@ -39,7 +39,7 @@ fn config_endpoint() -> String {
 /// any application-level `AuthManager` exists, see FORK-CHANGES / SERVER-DRIVEN-CONFIG history.
 pub async fn fetch_model_overrides(
     codex_home: &Path,
-) -> Result<Vec<(String, TomlValue)>, AdAgentConfigError> {
+) -> Result<ServerConfigOverrides, AdAgentConfigError> {
     let auth_manager = AuthManager::new(
         codex_home.to_path_buf(),
         /* enable_codex_api_key_env */ false,
@@ -58,7 +58,7 @@ pub async fn fetch_model_overrides(
 async fn fetch_model_overrides_with_auth_manager(
     auth_manager: &Arc<AuthManager>,
     url: &str,
-) -> Result<Vec<(String, TomlValue)>, AdAgentConfigError> {
+) -> Result<ServerConfigOverrides, AdAgentConfigError> {
     let auth = auth_manager
         .auth()
         .await
@@ -70,11 +70,13 @@ async fn fetch_model_overrides_with_auth_manager(
     fetch::fetch_model_overrides_from(url, &access_token, &http_client).await
 }
 
-/// Fetches server-driven model config and, on success with a non-empty result, returns
-/// `stack` with a `ConfigLayerSource::ServerConfig` layer inserted (outranking `SessionFlags`,
-/// see the module doc comment). On fetch failure or an empty response, returns `stack`
-/// unchanged; the fetch `Result` is returned alongside so the caller can still surface a
-/// fetch error where that caller is expected to (e.g. `Config::ad_agent_config_status`).
+/// Fetches server-driven model config and returns `stack` with up to two layers inserted:
+/// `ConfigLayerSource::ServerConfig` for the enforced entries (outranking every local layer,
+/// including `SessionFlags`) and `ConfigLayerSource::ServerDefaults` for the `[defaults]`
+/// entries (ranking just below the user's own `config.toml`, so a choice the user made
+/// survives restarts). Empty parts add no layer. On fetch failure, returns `stack` unchanged;
+/// the fetch `Result` is returned alongside so the caller can still surface a fetch error
+/// where that caller is expected to (e.g. `Config::ad_agent_config_status`).
 ///
 /// Every place that assembles a `ConfigLayerStack` from scratch must call this — a
 /// `ConfigLayerStack` built without it silently reflects only local/session config, even
@@ -82,19 +84,31 @@ async fn fetch_model_overrides_with_auth_manager(
 pub async fn apply_server_config_layer(
     codex_home: &Path,
     stack: ConfigLayerStack,
-) -> (ConfigLayerStack, Result<Vec<(String, TomlValue)>, AdAgentConfigError>) {
+) -> (ConfigLayerStack, Result<ServerConfigOverrides, AdAgentConfigError>) {
     let overrides_result = fetch_model_overrides(codex_home).await;
     let stack = match &overrides_result {
-        Ok(overrides) if !overrides.is_empty() => {
-            let server_config_layer = ConfigLayerEntry::new(
-                ConfigLayerSource::ServerConfig,
-                build_cli_overrides_layer(overrides),
-            );
-            stack.with_layer_inserted_by_precedence(server_config_layer)
-        }
-        _ => stack,
+        Ok(overrides) => with_server_config_layers(stack, overrides),
+        Err(_) => stack,
     };
     (stack, overrides_result)
+}
+
+fn with_server_config_layers(
+    stack: ConfigLayerStack,
+    overrides: &ServerConfigOverrides,
+) -> ConfigLayerStack {
+    [
+        (ConfigLayerSource::ServerDefaults, &overrides.defaults),
+        (ConfigLayerSource::ServerConfig, &overrides.enforced),
+    ]
+    .into_iter()
+    .filter(|(_, entries)| !entries.is_empty())
+    .fold(stack, |stack, (source, entries)| {
+        stack.with_layer_inserted_by_precedence(ConfigLayerEntry::new(
+            source,
+            build_cli_overrides_layer(entries),
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -107,7 +121,13 @@ mod tests {
     use wiremock::matchers::method;
     use wiremock::matchers::path;
 
+    use super::ServerConfigOverrides;
     use super::fetch_model_overrides_with_auth_manager;
+    use super::with_server_config_layers;
+    use codex_config::ConfigLayerEntry;
+    use codex_config::ConfigLayerSource;
+    use codex_config::ConfigLayerStack;
+    use codex_utils_absolute_path::AbsolutePathBuf;
     use codex_login::AuthManager;
     use codex_login::CodexAuth;
     use codex_login::test_support::auth_manager_from_optional_auth;
@@ -146,10 +166,67 @@ mod tests {
 
         assert_eq!(
             overrides,
-            vec![(
-                "model".to_string(),
-                TomlValue::String("qwen3.8-max".to_string())
-            )]
+            ServerConfigOverrides {
+                enforced: vec![(
+                    "model".to_string(),
+                    TomlValue::String("qwen3.8-max".to_string())
+                )],
+                defaults: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn user_choice_beats_server_defaults_but_not_enforced_entries() {
+        let codex_home = tempfile::tempdir().expect("create codex home");
+        let user_file = AbsolutePathBuf::from_absolute_path(codex_home.path().join("config.toml"))
+            .expect("absolute user config path");
+        let user_config: TomlValue = toml::from_str(
+            r#"
+            model = "user-picked-model"
+            model_provider = "local-provider"
+            "#,
+        )
+        .expect("user config should parse");
+        let stack = ConfigLayerStack::default().with_layer_inserted_by_precedence(
+            ConfigLayerEntry::new(
+                ConfigLayerSource::User {
+                    file: user_file,
+                    profile: None,
+                },
+                user_config,
+            ),
+        );
+        let overrides = ServerConfigOverrides {
+            enforced: vec![(
+                "model_provider".to_string(),
+                TomlValue::String("cowork".to_string()),
+            )],
+            defaults: vec![
+                (
+                    "model".to_string(),
+                    TomlValue::String("qwen3.8-max".to_string()),
+                ),
+                (
+                    "model_reasoning_effort".to_string(),
+                    TomlValue::String("high".to_string()),
+                ),
+            ],
+        };
+
+        let effective = with_server_config_layers(stack, &overrides).effective_config();
+
+        assert_eq!(
+            (
+                effective.get("model"),
+                effective.get("model_provider"),
+                effective.get("model_reasoning_effort"),
+            ),
+            (
+                Some(&TomlValue::String("user-picked-model".to_string())),
+                Some(&TomlValue::String("cowork".to_string())),
+                Some(&TomlValue::String("high".to_string())),
+            )
         );
     }
 }

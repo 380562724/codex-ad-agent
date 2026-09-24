@@ -198,7 +198,24 @@
           "type": "object"
         },
         {
-          "description": "Model configuration fetched from the ad-agent server. Outranks `SessionFlags`.",
+          "description": "Defaults from the `[defaults]` table of the ad-agent server config. Ranks just below `User`, so a user's own choice wins.",
+          "properties": {
+            "type": {
+              "enum": [
+                "serverDefaults"
+              ],
+              "title": "ServerDefaultsConfigLayerSourceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "ServerDefaultsConfigLayerSource",
+          "type": "object"
+        },
+        {
+          "description": "Enforced configuration fetched from the ad-agent server (everything outside its `[defaults]` table). Outranks `SessionFlags`.",
           "properties": {
             "type": {
               "enum": [

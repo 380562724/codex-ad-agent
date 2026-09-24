@@ -27,6 +27,7 @@ use tokio::sync::TryLockError;
 use tracing::Instrument as _;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 
 const MODEL_CACHE_FILE: &str = "models_cache.json";
 const DEFAULT_MODEL_CACHE_TTL: Duration = Duration::from_secs(300);
@@ -259,6 +260,9 @@ pub type SharedModelsManager = Arc<dyn ModelsManager>;
 #[derive(Debug)]
 pub struct OpenAiModelsManager {
     remote_models: RwLock<ModelsCacheEntry>,
+    /// [ad-agent] Whether `remote_models` holds a catalog applied from the provider (fetched
+    /// or loaded from its cache) rather than the bundled catalog it starts with.
+    remote_catalog_applied: AtomicBool,
     cache: Option<Arc<dyn ModelsCache>>,
     endpoint_client: SharedModelsEndpointClient,
     api_key_model_discovery_enabled: AtomicBool,
@@ -324,6 +328,7 @@ impl OpenAiModelsManager {
                 identity: endpoint_client.identity(),
                 models: remote_models,
             }),
+            remote_catalog_applied: AtomicBool::new(false),
             cache,
             api_key_model_discovery_enabled: AtomicBool::new(false),
             endpoint_client,
@@ -346,6 +351,52 @@ impl ModelsManager for OpenAiModelsManager {
     fn set_api_key_model_discovery_enabled(&self, enabled: bool) {
         self.api_key_model_discovery_enabled
             .store(enabled, Ordering::SeqCst);
+    }
+
+    // [ad-agent] The configured model may be a user's persisted choice (it outranks the
+    // server's `[defaults]`), so it can name a model the server has since withdrawn. Fall
+    // back to the catalog default when the fetched server catalog doesn't list it —
+    // otherwise every request would fail at the gateway. Only a catalog actually fetched
+    // for this provider counts: `get_remote_models` falls back to the bundled OpenAI
+    // catalog, which says nothing about what this provider serves.
+    fn get_default_model<'a>(
+        &'a self,
+        model: &'a Option<String>,
+        allow_provider_model_fallback: bool,
+        refresh_strategy: RefreshStrategy,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'a, String> {
+        Box::pin(
+            async move {
+                let Some(requested_model) = model.as_deref() else {
+                    return default_model_from_available(
+                        self.list_models(refresh_strategy, http_client_factory)
+                            .await,
+                    );
+                };
+                if !self.fetched_catalog_excludes(requested_model).await {
+                    return requested_model.to_string();
+                }
+                let fallback_model = default_model_from_available(
+                    self.build_available_models(self.get_remote_models().await),
+                );
+                if fallback_model.is_empty() {
+                    return requested_model.to_string();
+                }
+                warn!(
+                    requested_model,
+                    fallback_model = %fallback_model,
+                    "configured model is not in the provider's model catalog; using catalog default"
+                );
+                fallback_model
+            }
+            .instrument(tracing::info_span!(
+                "get_default_model",
+                model.provided = model.is_some(),
+                allow_provider_model_fallback,
+                refresh_strategy = %refresh_strategy
+            )),
+        )
     }
 
     fn raw_model_catalog(
@@ -434,6 +485,18 @@ impl ModelsManager for OpenAiModelsManager {
 }
 
 impl OpenAiModelsManager {
+    /// [ad-agent] Whether a catalog was actually applied for this provider and it doesn't
+    /// list `model`. `false` whenever there is no such catalog to judge by.
+    async fn fetched_catalog_excludes(&self, model: &str) -> bool {
+        let entry = self.remote_models.read().await;
+        let applied_for_this_provider = self.remote_catalog_applied.load(Ordering::SeqCst)
+            && entry.identity.is_some()
+            && entry.identity == self.endpoint_client.identity();
+        applied_for_this_provider
+            && !entry.models.is_empty()
+            && !entry.models.iter().any(|candidate| candidate.slug == model)
+    }
+
     async fn raw_model_catalog(
         &self,
         refresh_strategy: RefreshStrategy,
@@ -600,6 +663,7 @@ impl OpenAiModelsManager {
             entry.models = models;
         }
         *current = entry;
+        self.remote_catalog_applied.store(true, Ordering::SeqCst);
         true
     }
 

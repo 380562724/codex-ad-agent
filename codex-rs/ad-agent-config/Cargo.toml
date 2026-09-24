@@ -19,6 +19,7 @@ thiserror = { workspace = true }
 toml = { workspace = true }
 
 [dev-dependencies]
+codex-utils-absolute-path = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
